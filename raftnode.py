@@ -170,7 +170,7 @@ class RaftNode(rpyc.Service):
 
         def run_server(self):
                 while True:
-                        timeout = uniform(1, 6)
+                        timeout = uniform(1, 5)
                         self.vote = -1
                         self.vote_count = 0
                         log_state_thread = Thread(target=self.log_state)
