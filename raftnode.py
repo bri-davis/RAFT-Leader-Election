@@ -5,7 +5,6 @@ from rpyc.utils.server import ThreadPoolServer
 from threading import Thread
 from threading import Timer
 from threading import Lock
-from threading import Event
 import logging
 from random import uniform
 '''
@@ -54,7 +53,6 @@ class RaftNode(rpyc.Service):
                 self.append_entries_lock = Lock()
                 self.request_vote_lock = Lock()
                 self.election_lock = Lock()
-                self.logging_lock = Lock()
 
                 # Create directories and loggers for storage persistence
                 directory = os.getcwd() + '/tmp'
@@ -82,8 +80,6 @@ class RaftNode(rpyc.Service):
                 debug_handler.setFormatter(debug_format)
                 self.debug_logger.addHandler(debug_handler)
                 
-                #self.debug_logger.setFormatter(debug_format)
-
                 # Initialize the node with state information, using storage persisted state if it exists
                 if os.stat(self.state_logfile).st_size == 0:
                         self.term = 0
@@ -137,9 +133,11 @@ class RaftNode(rpyc.Service):
                                 else: # self.term > candidate_term
                                         vote_granted = False
                                         debug_message = ('I have term {}, which is higher than that of the candidate node {} with term {}'.format(self.term, candidate_ID, candidate_term), )
-                        else: # self.vote != None
+                        else: # self.vote != -1
                                 vote_granted = False
                                 debug_message = ('I have already voted for candidate node {}'.format(self.vote), )
+                        log_state_thread = Thread(target=self.log_state)
+                        log_state_thread.start()
                         log_debug_thread = Thread(target=self.log_debug, args=debug_message)
                         log_debug_thread.start()
                 return self.term, vote_granted 
@@ -164,6 +162,8 @@ class RaftNode(rpyc.Service):
                         else: #self.term > leader_term
                                 success = False
                                 debug_message = ('I have term {}, which is higher than that of the leader node {} with term {}'.format(self.term, leader_ID, leader_term), )
+                        log_state_thread = Thread(target=self.log_state)
+                        log_state_thread.start()
                         log_debug_thread = Thread(target=self.log_debug, args=debug_message)
                         log_debug_thread.start()
                 return self.term, success
@@ -195,6 +195,9 @@ class RaftNode(rpyc.Service):
                 
                 log_state_thread = Thread(target=self.log_state)
                 log_state_thread.start()
+                debug_message = ('I timed out as a follower', )
+                log_debug_thread = Thread(target=self.log_debug, args=debug_message)
+                log_debug_thread.start()
                 self.broadcast_election()
 
         def candidate_timeout(self):
@@ -205,6 +208,9 @@ class RaftNode(rpyc.Service):
                 
                 log_state_thread = Thread(target=self.log_state)
                 log_state_thread.start()
+                debug_message = ('I timed out as a candidate', )
+                log_debug_thread = Thread(target=self.log_debug, args=debug_message)
+                log_debug_thread.start()
                 self.broadcast_election()
 
         def election(self, candidate_term, candidate_ID, host, port):
@@ -282,7 +288,7 @@ class RaftNode(rpyc.Service):
                         log_debug_thread.start()
 
         def broadcast_heartbeat(self):
-                debug_message = ('I am sending a heartbeat', )
+                debug_message = ('I am sending a heartbeat with term {}'.format(self.term), )
                 log_debug_thread = Thread(target=self.log_debug, args=debug_message)
                 log_debug_thread.start()
                 
